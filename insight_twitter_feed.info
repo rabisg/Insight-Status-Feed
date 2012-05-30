@@ -1,0 +1,7 @@
+; $Id$
+name = Insight Twitter Feed
+description = Pull Feed from Twitter and Create Contextual Insets
+package = Web Services
+core = 7.x
+dependencies[] = twitter_pull
+stylesheets[all][] = insight-twitter.css

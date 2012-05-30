@@ -1,0 +1,135 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * Insight Twitter Feed module.
+ */
+
+/**
+ * Implements hook_theme
+ */
+function insight_twitter_feed_theme($existing, $type, $theme, $path) {
+  return array(
+    'insight_twitter' => array(
+      'arguments' => array('tweets' => NULL, 'twitkey' => NULL, '$twitter_bird' => NULL),
+      'template' => 'insight-twitter'
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu()
+ */
+function insight_twitter_feed_menu() {
+  $items['admin/config/services/insight_twitter_feed'] = array(
+    'title' => 'Insight Twitter Feed',
+    'description' => 'Configure settings for Insight\'s Twitter Feed.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('insight_twitter_feed_admin_form'),
+    'access arguments' => array('administer site configuration'),
+  );
+  $items['twitter_feed'] = array(
+    'title' => 'Fedora Speaks',
+    'description' => 'Insight\'s Twitter Feed.',
+    'page callback' => 'insight_twitter_feed_create_page',
+    'type' => MENU_NORMAL_ITEM,
+    'access callback' => TRUE,
+  );
+  return $items;
+}
+
+/**
+ * Form Builder: Admin Form
+ */
+function insight_twitter_feed_admin_form($form, &$form_state) {
+  $form = array(
+    'twitter_pull_num_items' => array(
+      '#type' => 'textfield',
+      '#title' => t('Number of items to pull per Request'),
+      '#description' => t('Upto a maximum of 100'),
+      '#default_value' => variable_get('twitter_pull_num_items', 100),
+    ),
+    'twitter_pull_cache_length' => array(
+      '#type' => 'textfield',
+      '#title' => t('Cache Duration(in minutes)'),
+      '#default_value' => variable_get('twitter_pull_cache_length', 5),
+    ),
+    'insight_twitter_feed_query' => array(
+      '#type' => 'textfield',
+      '#title' => t('Search Query for Twitter Requests'),
+      '#description' => t('Can include #hash, @user or @user|list'),
+      '#default_value' => variable_get('insight_twitter_feed_query', '#fedora'),
+    ),
+    'insight_twitter_feed_num_per_block' => array(
+      '#type' => 'textfield',
+      '#title' => t('Number of items to show in block'),
+      '#default_value' => variable_get('insight_twitter_feed_num_per_block', 10),
+    ),
+    'insight_twitter_feed_num_per_page' => array(
+      '#type' => 'textfield',
+      '#title' => t('Number of items to show per page'),
+      '#default_value' => variable_get('insight_twitter_feed_num_per_page', 20),
+    ),
+  );
+  return system_settings_form($form);
+}
+
+/**
+ * Implements hook_twitter_pull_blocks()
+ */
+function insight_twitter_feed_twitter_pull_blocks() {
+  return array(
+    0 => (object) array(
+      'delta' => 'Insight Twitter Feed',
+      'tweetkey' => variable_get('insight_twitter_feed_query', '#fedora'),
+      'name' => 'Fedora Speaks',   
+      'number_of_items' => variable_get('insight_twitter_feed_num_per_block', 5),
+      'theme_key' => 'twitter_pull_listing',    
+    )
+  );
+  
+}
+
+/**
+ * Page Builder Function for displaying Feeds
+ */
+function insight_twitter_feed_create_page() {
+
+  drupal_add_js('http://platform.twitter.com/widgets.js', 'external');
+  $twitkey = variable_get('insight_twitter_feed_query', '#fedora');
+  $tweets = twitter_pull_retrieve($twitkey);
+
+  //Link to Twitter Bird
+  $path = drupal_get_path('module', 'insight_twitter_feed');
+  $twitter_bird = '<img src="' . $path . '/images/bird.png" alt="Follow"/>';
+  //Setting up Pager
+  $maxCount = count($tweets);
+  $num_per_page = variable_get('insight_twitter_feed_num_per_page', 20);
+  $page = pager_default_initialize($maxCount, $num_per_page);
+  $offset = $num_per_page * $page;
+  $page_tweets = array_slice($tweets, $offset, $num_per_page);
+
+  $ret = theme('insight_twitter', array('tweets' => $page_tweets, 'twitkey' => $twitkey, 'twitter_bird' => $twitter_bird));
+
+  if (empty($ret) && !empty($tweets)) {
+    $errmsg = t("Non-empty list of tweets returned blank space after applying theme function. Most probably you are passing invalid/unregistered theme key or tpl file corresponding to the theme key does not yet exist. Please fix the problem.");
+    watchdog('Twitter Pull', $errmsg, array(), WATCHDOG_WARNING);
+    $ret = t('Errors occured while trying to retrieve tweets. Please check Watchdog log messages.');
+    return $ret;
+  }
+  $ret .= theme('pager');
+  return $ret;
+}
+
+/**
+ * Helper function to generate Web Intents
+ */
+function generateIntents($id) {
+  
+  $path = drupal_get_path('module', 'insight_twitter_feed');
+  $intent = '<span class="tweet-intent"><a href="https://twitter.com/intent/tweet?in_reply_to=' . $id. '"><img src="' . $path . '/images/reply.png" alt="Reply" title="Reply"/>Reply </a></span>';
+  $intent .= '<span class="tweet-intent"><a href="https://twitter.com/intent/retweet?tweet_id='. $id. '"><img src="' . $path . '/images/retweet.png" alt="Retweet"/>Retweet</a></span>';
+  $intent .= '<span class="tweet-intent"><a href="https://twitter.com/intent/favorite?tweet_id=' . $id . '"><img src="' . $path . '/images/favorite.png" alt="Favourite"/>Favourite </a></span>';
+  return $intent;
+}
