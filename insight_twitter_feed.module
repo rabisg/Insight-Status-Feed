@@ -12,8 +12,8 @@
 function insight_twitter_feed_theme($existing, $type, $theme, $path) {
   return array(
     'insight_twitter' => array(
-      'arguments' => array('tweets' => NULL, 'twitkey' => NULL, '$twitter_bird' => NULL),
-      'template' => 'insight-twitter'
+      'arguments' => array('tweets' => NULL, 'twitkey' => NULL, 'logo' => NULL),
+      'template' => 'insight-twitter',
     ),
   );
 }
@@ -29,12 +29,34 @@ function insight_twitter_feed_menu() {
     'page arguments' => array('insight_twitter_feed_admin_form'),
     'access arguments' => array('administer site configuration'),
   );
-  $items['twitter_feed'] = array(
+  $items['feed'] = array(
     'title' => 'Fedora Speaks',
     'description' => 'Insight\'s Twitter Feed.',
     'page callback' => 'insight_twitter_feed_create_page',
     'type' => MENU_NORMAL_ITEM,
     'access callback' => TRUE,
+  );
+  $items['feed/twitter'] = array(
+    'title' => 'Twitter',
+    'description' => 'Insight\'s Twitter Feed.',
+    'page callback' => 'insight_twitter_feed_create_page',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'access callback' => TRUE,
+  );
+  $items['feed/identica'] = array(
+    'title' => 'Identi.ca',
+    'description' => 'Insight\'s Identi.ca Feed.',
+    'page callback' => 'insight_identica_feed_create_page',
+    'type' => MENU_LOCAL_TASK,
+    'access callback' => TRUE,
+  );
+  // A menu callback is required when using ajax outside of the Form API.
+  $items['ajax_link_callback/%/%'] = array(
+    'page callback' => 'ajax_link_response',
+    'page arguments' => array(1,2),
+    'access callback' => 'user_access',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
   );
   return $items;
 }
@@ -44,6 +66,18 @@ function insight_twitter_feed_menu() {
  */
 function insight_twitter_feed_admin_form($form, &$form_state) {
   $form = array(
+    'insight_twitter_feed_query' => array(
+      '#type' => 'textfield',
+      '#title' => t('Search Query for Twitter Requests'),
+      '#description' => t('Can include #hash, @user to search OR user:username or list:username|list for user timeline or lists'),
+      '#default_value' => variable_get('insight_twitter_feed_query', ''),
+    ),
+    'insight_identica_feed_query' => array(
+      '#type' => 'textfield',
+      '#title' => t('Search Query for Identi.ca Requests'),
+      '#description' => t('Can include #hash, @user'),
+      '#default_value' => variable_get('insight_identica_feed_query', ''),
+    ),
     'twitter_pull_num_items' => array(
       '#type' => 'textfield',
       '#title' => t('Number of items to pull per Request'),
@@ -54,12 +88,6 @@ function insight_twitter_feed_admin_form($form, &$form_state) {
       '#type' => 'textfield',
       '#title' => t('Cache Duration(in minutes)'),
       '#default_value' => variable_get('twitter_pull_cache_length', 5),
-    ),
-    'insight_twitter_feed_query' => array(
-      '#type' => 'textfield',
-      '#title' => t('Search Query for Twitter Requests'),
-      '#description' => t('Can include #hash, @user or @user|list'),
-      '#default_value' => variable_get('insight_twitter_feed_query', '#fedora'),
     ),
     'insight_twitter_feed_num_per_block' => array(
       '#type' => 'textfield',
@@ -97,12 +125,12 @@ function insight_twitter_feed_twitter_pull_blocks() {
 function insight_twitter_feed_create_page() {
 
   drupal_add_js('http://platform.twitter.com/widgets.js', 'external');
-  $twitkey = variable_get('insight_twitter_feed_query', '#fedora');
+  $twitkey = variable_get('insight_twitter_feed_query', '@fedora');
   $tweets = twitter_pull_retrieve($twitkey);
 
   //Link to Twitter Bird
   $path = drupal_get_path('module', 'insight_twitter_feed');
-  $twitter_bird = '<img src="' . $path . '/images/bird.png" alt="Follow"/>';
+  $twitter_bird = '<img src="' . $path . '/images/bird.png" />';
   //Setting up Pager
   $maxCount = count($tweets);
   $num_per_page = variable_get('insight_twitter_feed_num_per_page', 20);
@@ -110,7 +138,55 @@ function insight_twitter_feed_create_page() {
   $offset = $num_per_page * $page;
   $page_tweets = array_slice($tweets, $offset, $num_per_page);
 
-  $ret = theme('insight_twitter', array('tweets' => $page_tweets, 'twitkey' => $twitkey, 'twitter_bird' => $twitter_bird));
+
+  //Set up variables in body and generate links
+  //@TODO move this to template_preprocess_HOOK()
+  foreach ($page_tweets as $tweet_id => $tweet) {
+    $tweet->format_username = l($tweet->username, 'https://twitter.com/intent/user?screen_name=' . $tweet->username);
+    $tweet->text = twitter_pull_add_links($tweet->text);
+    $tweet->time = l(format_interval(time() - $tweet->timestamp), 'http://twitter.com/' . $tweet->username . '/status/' . $tweet->id);
+    $tweet->links = generateIntents($tweet->id);
+  }
+  $ret = theme('insight_twitter', array('tweets' => $page_tweets, 'twitkey' => $twitkey, 'logo' => $twitter_bird));
+
+  if (empty($ret) && !empty($tweets)) {
+    $errmsg = t("Non-empty list of tweets returned blank space after applying theme function. Most probably you are passing invalid/unregistered theme key or tpl file corresponding to the theme key does not yet exist. Please fix the problem.");
+    watchdog('Twitter Pull', $errmsg, array(), WATCHDOG_WARNING);
+    $ret = t('Errors occured while trying to retrieve tweets. Please check Watchdog log messages.');
+    return $ret;
+  }
+  $ret .= theme('pager');
+  return $ret;
+}
+
+/**
+ * Page Builder Function for displaying Feeds
+ */
+function insight_identica_feed_create_page() {
+
+  $twitkey = variable_get('insight_identica_feed_query', '@fedora');
+  $tweets = twitter_pull_retrieve($twitkey, NULL, 'Identica', 'http://identi.ca/api/', 'http://identi.ca/api/');
+
+  //Setting up Pager
+  $maxCount = count($tweets);
+  $num_per_page = variable_get('insight_twitter_feed_num_per_page', 20);
+  $page = pager_default_initialize($maxCount, $num_per_page);
+  $offset = $num_per_page * $page;
+  $page_tweets = array_slice($tweets, $offset, $num_per_page);
+
+  //Link to Twitter Bird
+  $path = drupal_get_path('module', 'insight_twitter_feed');
+  $identica_logo = '<img src="http://blog.hootsuite.com/wp-content/uploads/2012/04/identica_256x256-150x150.png" width="16px" height="16px" />';
+
+  //Set up variables in body and generate links
+  //@TODO move this to template_preprocess_HOOK()
+  foreach ($page_tweets as $tweet_id => $tweet) {
+    $tweet->format_username = l($tweet->username, 'https://identi.ca/' . $tweet->username);
+    $tweet->text = identica_pull_add_links($tweet->text);
+    $tweet->time = l(format_interval(time() - $tweet->timestamp), 'http://identi.ca/notice/' . $tweet->id);
+    $tweet->links = getIdenticaLinks($tweet->id);
+  }
+  $ret = theme('insight_twitter', array('tweets' => $page_tweets, 'twitkey' => $twitkey, 'logo' => $identica_logo));
 
   if (empty($ret) && !empty($tweets)) {
     $errmsg = t("Non-empty list of tweets returned blank space after applying theme function. Most probably you are passing invalid/unregistered theme key or tpl file corresponding to the theme key does not yet exist. Please fix the problem.");
@@ -128,8 +204,169 @@ function insight_twitter_feed_create_page() {
 function generateIntents($id) {
   
   $path = drupal_get_path('module', 'insight_twitter_feed');
-  $intent = '<span class="tweet-intent"><a href="https://twitter.com/intent/tweet?in_reply_to=' . $id. '"><img src="' . $path . '/images/reply.png" alt="Reply" title="Reply"/>Reply </a></span>';
-  $intent .= '<span class="tweet-intent"><a href="https://twitter.com/intent/retweet?tweet_id='. $id. '"><img src="' . $path . '/images/retweet.png" alt="Retweet"/>Retweet</a></span>';
+  $intent = '<span class="tweet-intent"><a href="https://twitter.com/intent/tweet?in_reply_to=' . $id . '"><img src="' . $path . '/images/reply.png" />Reply </a></span>';
+  $intent .= '<span class="tweet-intent"><a href="https://twitter.com/intent/retweet?tweet_id=' . $id . '"><img src="' . $path . '/images/retweet.png" alt="Retweet"/>Retweet</a></span>';
   $intent .= '<span class="tweet-intent"><a href="https://twitter.com/intent/favorite?tweet_id=' . $id . '"><img src="' . $path . '/images/favorite.png" alt="Favourite"/>Favourite </a></span>';
   return $intent;
+}
+
+/**
+ * Automatically add links to URLs and Identi.ca usernames in a notice.
+ */
+function identica_pull_add_links($text) {
+  $pattern = '#(https?)://([^\s\(\)\,]+)#ims';
+  $repl = '<a href="$1://$2" rel="nofollow" title="$1://$2">$2</a>';
+  $text = preg_replace($pattern, $repl, $text);
+
+  $pattern = '#@(\w+)#ims';
+  $repl = '@<a href="http://identi.ca/$1" rel="nofollow" target="_blank" title="@$1">$1</a>';
+  $text = preg_replace($pattern, $repl, $text);
+
+  $pattern = '/[#]+([A-Za-z0-9-_]+)/';
+  $repl = '#<a href="http://identi.ca/tag/$1" title="#$1" target="_blank" rel="nofollow">$1</a>';
+  $text = preg_replace($pattern, $repl, $text);  
+
+  return $text;
+}
+
+function getIdenticaLinks($id) {
+ $link['fav'] = array(
+    '#type' => 'link',
+    '#title' => t('Favorite'),
+    // Note the /nojs portion of the href - if javascript is enabled,
+    // this part will be stripped from the path before it is called.
+    '#href' => 'ajax_link_callback/fav/' . $id . '/nojs/',
+    '#id' => 'ajax_fav_link_' . $id,
+    '#prefix' => '<span class="tweet-intent">',
+    '#suffix' => '</span>',
+    '#ajax' => array(
+      'wrapper' => 'identica_textbox_' . $id,
+      'method' => 'html',
+    ),
+  );
+  $link['reply'] = array(
+    '#type' => 'link',
+    '#title' => t('Reply'),
+    '#href' => 'ajax_link_callback/reply/' . $id . '/nojs/',
+    '#id' => 'ajax_reply_link_' . $id,
+    '#prefix' => '<span class="tweet-intent">',
+    '#suffix' => '</span>',
+    '#ajax' => array(
+      'wrapper' => 'identica_textbox_' . $id,
+      'method' => 'html',
+    ),
+  );
+  $link['repeat'] = array(
+    '#type' => 'link',
+    '#title' => t('Repeat'),
+    '#href' => 'ajax_link_callback/repeat/' . $id . '/nojs/',
+    '#id' => 'ajax_repeat_link_' . $id,
+    '#prefix' => '<span class="tweet-intent">',
+    '#suffix' => '</span>',
+    '#ajax' => array(
+      'wrapper' => 'identica_textbox_' . $id,
+      'method' => 'html',
+    ),
+  );
+  $link['my_div'] = array(
+    '#markup' => '<div id="identica_textbox_' . $id .'"></div>',
+  );
+  return drupal_render($link);
+}
+
+/**
+ * Callback for link example.
+ *
+ * Takes different logic paths based on whether Javascript was enabled.
+ * If $type == 'ajax', it tells this function that ajax.js has rewritten
+ * the URL and thus we are doing an AJAX and can return an array of commands.
+ *
+ * @param $action
+ *   Can be favorite, reply, repeat.
+ * @param $id
+ *   Unique Id of the Identi.ca Notice.
+ * @param $type
+ *   Either 'ajax' or 'nojs. Type is simply the normal URL argument to this URL.
+ *
+ * @return
+ *   If $type == 'ajax', returns an array of AJAX Commands.
+ *   Otherwise, just returns the content, which will end up being a page.
+ *
+ * @ingroup ajax_example
+ */
+function ajax_link_response($action, $id, $type = 'ajax') {
+  $output = '<div id="identica_textbox_' . $id .'">';
+  $output .= drupal_render(drupal_get_form('identica_link_form', $action, $id));
+  $output .= '</div>';
+  if ($type == 'ajax') {
+    $commands = array();
+    // See ajax_example_advanced.inc for more details on the available commands
+    // and how to use them.
+    $commands[] = ajax_command_replace('#identica_textbox_' . $id , $output);
+    $page = array('#type' => 'ajax', '#commands' => $commands);
+    ajax_deliver($page);
+  }
+  else {
+    return $output;
+  }
+}
+
+function identica_link_form($form, &$form_state, $action, $id) {
+  $form = array(
+    'identica_textfield' => array(
+      '#type' => 'textarea',
+      '#rows' =>3,
+    ),
+    'identica_submit' => array(
+      '#type' => 'submit',
+      '#value' => $action,
+      '#ajax' => array(
+        'callback' => 'identica_action',
+        'wrapper' => 'identica_textbox_' . $id,
+      ),
+    ),
+    'identica_id' => array(
+      '#type' => 'value',
+      '#value' => $id,
+    ),
+    'identica_action' => array(
+      '#type' => 'value',
+      '#value' => $action,
+    ),
+  );
+  return $form;
+}
+
+function identica_action($form, $form_state) {
+  $element['#prefix'] = '<div id="identica_textbox_' . $form_state['values']['identica_id'] .'">';
+  $element['#suffix'] = '</div>';
+  if($form_state['values']['identica_submit']=='Reply' && empty($form_state['values']['identica_textfield']))
+    return drupal_render($element);
+
+  module_load_include('php', 'identica', 'twitteroauth/twitteroauth');
+  global $user;  
+  try {
+    $uid = $user->uid;
+    $account = load_identica_user($uid);
+    $access_token = $account->get_auth();
+    $connection = new TwitterOAuth(CONSUMER_KEY, CONSUMER_SECRET, $access_token['oauth_token'], $access_token['oauth_token_secret']);
+    switch($form_state['values']['identica_submit'])
+    {
+      case 'fav':
+        $connection->post('favorites/create/' . $form_state['values']['identica_id'], array());
+        break;
+      case 'reply':
+        $connection->post('statuses/update', array('status' => $form_state['values']['identica_textfield']));
+        break;
+      case 'repeat':
+        $connection->post('statuses/retweet/' . $form_state['values']['identica_id'], array());
+        break;
+    }
+    if (200 != $connection->http_code)
+      $element['#value'] = t("Action could not be completed. Try again!");
+  }
+  catch (Exception $e) {
+    $element = t("User does not have an associated Identi.ca account");
+  }
+  return drupal_render($element);
 }

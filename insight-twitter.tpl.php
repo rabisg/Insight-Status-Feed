@@ -18,7 +18,7 @@
  *
  * 3) $title
  *
- * 4) $twitter_bird
+ * 4) $logo
  */
 ?>
 
@@ -36,12 +36,12 @@
       <li>
         <div class="tweet-authorphoto"><img src="<?php print $tweet->userphoto; ?>" alt="<?php print $tweet->username; ?>" /></div>
         <div class="tweet-content">
-          <span class="tweet-author"><?php print l($tweet->username, 'https://twitter.com/intent/user?screen_name=' . $tweet->username); ?></span> </br>
-          <span class="tweet-text"><?php print twitter_pull_add_links($tweet->text); ?></span>
+          <span class="tweet-author"><?php print $tweet->format_username; ?></span> </br>
+          <span class="tweet-text"><?php print $tweet->text; ?></span>
           <div class="tweet-footer">
-            <span class="tweet-bird"><?php print $twitter_bird; ?> </span>
-            <span class="tweet-time"><?php print l(format_interval(time() - $tweet->timestamp), 'http://twitter.com/' . $tweet->username . '/status/' . $tweet->id); ?> </span>
-          <span class="tweet-intents"><?php print generateIntents($tweet->id)?> </span></div>
+            <span class="tweet-bird"><?php print $logo; ?> </span>
+            <span class="tweet-time"><?php print $tweet->time; ?> </span>
+          <span class="tweet-intents"><?php print $tweet->links?> </span></div>
         </div>
 
         <?php if ($tweet_key < $tweet_count - 1): ?>
