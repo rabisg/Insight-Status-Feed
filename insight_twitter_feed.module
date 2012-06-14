@@ -53,7 +53,7 @@ function insight_twitter_feed_menu() {
   // A menu callback is required when using ajax outside of the Form API.
   $items['ajax_link_callback/%/%'] = array(
     'page callback' => 'ajax_link_response',
-    'page arguments' => array(1,2),
+    'page arguments' => array(1, 2),
     'access callback' => 'user_access',
     'access arguments' => array('access content'),
     'type' => MENU_CALLBACK,
@@ -172,7 +172,7 @@ function insight_identica_feed_create_page() {
   $num_per_page = variable_get('insight_twitter_feed_num_per_page', 20);
   $page = pager_default_initialize($maxCount, $num_per_page);
   $offset = $num_per_page * $page;
-  $page_tweets = array_slice($tweets, $offset, $num_per_page);
+  $page_tweets = empty($tweets) ? array() : array_slice($tweets, $offset, $num_per_page);
 
   //Link to Twitter Bird
   $path = drupal_get_path('module', 'insight_twitter_feed');
@@ -229,12 +229,24 @@ function identica_pull_add_links($text) {
   return $text;
 }
 
+/**
+ * Helper function to generate Favorite, Reply and Repeat notice
+ * for the identica notice
+ *
+ * @param $id
+ *   ID for the status being rendered
+ *
+ * @return 
+ *   A html output of links with appropiate markup
+ */
 function getIdenticaLinks($id) {
- $link['fav'] = array(
+  global $user;
+  if (!module_exists('identica') || load_identica_user($user->uid) == NULL)
+    return '';
+
+  $link['fav'] = array(
     '#type' => 'link',
     '#title' => t('Favorite'),
-    // Note the /nojs portion of the href - if javascript is enabled,
-    // this part will be stripped from the path before it is called.
     '#href' => 'ajax_link_callback/fav/' . $id . '/nojs/',
     '#id' => 'ajax_fav_link_' . $id,
     '#prefix' => '<span class="tweet-intent">',
@@ -269,7 +281,7 @@ function getIdenticaLinks($id) {
     ),
   );
   $link['my_div'] = array(
-    '#markup' => '<div id="identica_textbox_' . $id .'"></div>',
+    '#markup' => '<div id="identica_textbox_' . $id . '"></div>',
   );
   return drupal_render($link);
 }
@@ -295,13 +307,17 @@ function getIdenticaLinks($id) {
  * @ingroup ajax_example
  */
 function ajax_link_response($action, $id, $type = 'ajax') {
-  $output = '<div id="identica_textbox_' . $id .'">';
-  $output .= drupal_render(drupal_get_form('identica_link_form', $action, $id));
+  $commands = array();
+  $output = '<div id="identica_textbox_' . $id . '">';
+  if ($action == 'fav' || $action == 'repeat') {
+    $output .= identica_action($action, $id);
+  }
+  if ($action == 'reply') {
+    $output .= drupal_render(drupal_get_form('identica_reply_form', $id));
+  }
   $output .= '</div>';
+
   if ($type == 'ajax') {
-    $commands = array();
-    // See ajax_example_advanced.inc for more details on the available commands
-    // and how to use them.
     $commands[] = ajax_command_replace('#identica_textbox_' . $id , $output);
     $page = array('#type' => 'ajax', '#commands' => $commands);
     ajax_deliver($page);
@@ -311,17 +327,27 @@ function ajax_link_response($action, $id, $type = 'ajax') {
   }
 }
 
-function identica_link_form($form, &$form_state, $action, $id) {
+/**
+ * Form builder function for 'Reply to Notice' action
+ *
+ * @param $id
+ *   ID for the status being which needs to be replied
+ *
+ * @return 
+ *   A renderable array
+ */
+function identica_reply_form($form, &$form_state, $id) {
   $form = array(
     'identica_textfield' => array(
       '#type' => 'textarea',
-      '#rows' =>3,
+      '#rows' => 3,
+      '#required' => true,
     ),
     'identica_submit' => array(
       '#type' => 'submit',
       '#value' => $action,
       '#ajax' => array(
-        'callback' => 'identica_action',
+        'callback' => 'identica_reply',
         'wrapper' => 'identica_textbox_' . $id,
       ),
     ),
@@ -329,20 +355,34 @@ function identica_link_form($form, &$form_state, $action, $id) {
       '#type' => 'value',
       '#value' => $id,
     ),
-    'identica_action' => array(
-      '#type' => 'value',
-      '#value' => $action,
-    ),
   );
   return $form;
 }
 
-function identica_action($form, $form_state) {
-  $element['#prefix'] = '<div id="identica_textbox_' . $form_state['values']['identica_id'] .'">';
-  $element['#suffix'] = '</div>';
-  if($form_state['values']['identica_submit']=='Reply' && empty($form_state['values']['identica_textfield']))
-    return drupal_render($element);
+/**
+ * Callback function for identica_reply_form FORM
+ */
+function identica_reply($form, $form_state) {
+  return identica_action('reply', $form_state['values']['identica_id'], $form_state['values']['identica_textfield']);
+}
 
+/**
+ * Helper function to perform Identi.ca actions 
+ * @param $action
+ *  Specifies the action to be taken
+ * @param $id
+ *  ID of the status the action is performed on
+ *  Leave out for Update Operation
+ * @param $text
+ *  Optional argument: Specifies the body in update and reply
+ *
+ * @return
+ *  A HTML output stating the result of the operation
+ */
+function identica_action($action, $id = NULL, $text = '') {
+  $element['#prefix'] = '<div id="identica_textbox_' . $id . '">';
+  $element['#suffix'] = '</div>';
+  $element['#type'] = 'item';
   module_load_include('php', 'identica', 'twitteroauth/twitteroauth');
   global $user;  
   try {
@@ -350,23 +390,26 @@ function identica_action($form, $form_state) {
     $account = load_identica_user($uid);
     $access_token = $account->get_auth();
     $connection = new TwitterOAuth(CONSUMER_KEY, CONSUMER_SECRET, $access_token['oauth_token'], $access_token['oauth_token_secret']);
-    switch($form_state['values']['identica_submit'])
-    {
+    switch ($action) {
       case 'fav':
-        $connection->post('favorites/create/' . $form_state['values']['identica_id'], array());
+        $connection->post('favorites/create/' . $id, array());
+        $element['#title'] = t("Notice successfully favorited!");
         break;
+      case 'post':
       case 'reply':
-        $connection->post('statuses/update', array('status' => $form_state['values']['identica_textfield']));
+        $connection->post('statuses/update', array('status' => $text));
+        $element['#title'] = t("Reply successfully posted!");
         break;
       case 'repeat':
-        $connection->post('statuses/retweet/' . $form_state['values']['identica_id'], array());
+        $connection->post('statuses/retweet/' . $id, array());
+        $element['#title'] = t("Notice successfully repeated!");
         break;
     }
     if (200 != $connection->http_code)
-      $element['#value'] = t("Action could not be completed. Try again!");
+      $element['#title'] = t("Action could not be completed. Try again!");
   }
   catch (Exception $e) {
-    $element = t("User does not have an associated Identi.ca account");
+    $element['#title'] = t("User does not have an associated Identi.ca account");
   }
   return drupal_render($element);
 }
