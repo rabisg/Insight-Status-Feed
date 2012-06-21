@@ -1,8 +1,0 @@
-; $Id$
-name = Insight Twitter Feed
-description = Pull Feed from Twitter and Create Contextual Insets
-package = Fedora Insight
-core = 7.x
-version = 1.0
-dependencies[] = twitter_pull
-stylesheets[all][] = insight-twitter.css
