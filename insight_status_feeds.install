@@ -1,0 +1,14 @@
+<?php
+
+/**
+ * @file
+ * Specifies install, uninstall functions for insight_status_feeds module
+ */
+
+/**
+ * Implements hook_install
+ */
+function insight_status_feeds_install() {
+  variable_set('insight_twitter_feed_query', '@fedora');
+  variable_set('insight_identica_feed_query', '@fedora');
+}
