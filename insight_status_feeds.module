@@ -13,7 +13,7 @@ function insight_status_feeds_theme($existing, $type, $theme, $path) {
   return array(
     'insight_twitter' => array(
       'arguments' => array('tweets' => NULL, 'twitkey' => NULL, 'logo' => NULL),
-      'template' => 'insight-twitter',
+      'template' => 'insight-status-feeds',
     ),
   );
 }
@@ -32,21 +32,21 @@ function insight_status_feeds_menu() {
   $items['feed'] = array(
     'title' => 'Fedora Speaks',
     'description' => 'Insight\'s Twitter Feed.',
-    'page callback' => 'insight_status_feeds_create_page',
+    'page callback' => 'insight_status_feeds_create_twitter_page',
     'type' => MENU_NORMAL_ITEM,
     'access callback' => TRUE,
   );
   $items['feed/twitter'] = array(
     'title' => 'Twitter',
     'description' => 'Insight\'s Twitter Feed.',
-    'page callback' => 'insight_status_feeds_create_page',
+    'page callback' => 'insight_status_feeds_create_twitter_page',
     'type' => MENU_DEFAULT_LOCAL_TASK,
     'access callback' => TRUE,
   );
   $items['feed/identica'] = array(
     'title' => 'Identi.ca',
     'description' => 'Insight\'s Identi.ca Feed.',
-    'page callback' => 'insight_identica_feed_create_page',
+    'page callback' => 'insight_identica_feed_create_identica_page',
     'type' => MENU_LOCAL_TASK,
     'access callback' => TRUE,
   );
@@ -66,11 +66,11 @@ function insight_status_feeds_menu() {
  */
 function insight_status_feeds_admin_form($form, &$form_state) {
   $form = array(
-    'insight_status_feeds_query' => array(
+    'insight_twitter_feed_query' => array(
       '#type' => 'textfield',
       '#title' => t('Search Query for Twitter Requests'),
       '#description' => t('Can include #hash, @user to search OR user:username or list:username|list for user timeline or lists'),
-      '#default_value' => variable_get('insight_status_feeds_query', ''),
+      '#default_value' => variable_get('insight_twitter_feed_query', ''),
     ),
     'insight_identica_feed_query' => array(
       '#type' => 'textfield',
@@ -110,7 +110,7 @@ function insight_status_feeds_twitter_pull_blocks() {
   return array(
     0 => (object) array(
       'delta' => 'Insight Twitter Feed',
-      'tweetkey' => variable_get('insight_status_feeds_query', '#fedora'),
+      'tweetkey' => variable_get('insight_twitter_feed_query', '@fedora'),
       'name' => 'Fedora Speaks',   
       'number_of_items' => variable_get('insight_status_feeds_num_per_block', 5),
       'theme_key' => 'twitter_pull_listing',    
@@ -122,10 +122,10 @@ function insight_status_feeds_twitter_pull_blocks() {
 /**
  * Page Builder Function for displaying Feeds
  */
-function insight_status_feeds_create_page() {
+function insight_status_feeds_create_twitter_page() {
 
   drupal_add_js('http://platform.twitter.com/widgets.js', 'external');
-  $twitkey = variable_get('insight_status_feeds_query', '@fedora');
+  $twitkey = variable_get('insight_twitter_feed_query', '@fedora');
   $tweets = twitter_pull_retrieve($twitkey);
 
   //Link to Twitter Bird
@@ -136,7 +136,7 @@ function insight_status_feeds_create_page() {
   $num_per_page = variable_get('insight_status_feeds_num_per_page', 20);
   $page = pager_default_initialize($maxCount, $num_per_page);
   $offset = $num_per_page * $page;
-  $page_tweets = array_slice($tweets, $offset, $num_per_page);
+  $page_tweets = empty($tweets) ? array() : array_slice($tweets, $offset, $num_per_page);
 
 
   //Set up variables in body and generate links
@@ -162,7 +162,7 @@ function insight_status_feeds_create_page() {
 /**
  * Page Builder Function for displaying Feeds
  */
-function insight_identica_feed_create_page() {
+function insight_identica_feed_create_identica_page() {
 
   $twitkey = variable_get('insight_identica_feed_query', '@fedora');
   $tweets = twitter_pull_retrieve($twitkey, NULL, 'Identica', 'http://identi.ca/api/', 'http://identi.ca/api/');
@@ -174,9 +174,17 @@ function insight_identica_feed_create_page() {
   $offset = $num_per_page * $page;
   $page_tweets = empty($tweets) ? array() : array_slice($tweets, $offset, $num_per_page);
 
-  //Link to Twitter Bird
+
+  /* Link to Twitter Bird
+   * Although an image of Identi.ca logo is placed in images/
+   * it doesnt show up in an MENU_LOCAL_TASK page on providing an relative path
+   * It might be a Drupal bug but the current workaround is putting an online
+   * reference to the path
+   */
   $path = drupal_get_path('module', 'insight_status_feeds');
+  //$identica_logo = '<img src="' . $path . '/images/identica.jpg" />';
   $identica_logo = '<img src="http://blog.hootsuite.com/wp-content/uploads/2012/04/identica_256x256-150x150.png" width="16px" height="16px" />';
+
 
   //Set up variables in body and generate links
   //@TODO move this to template_preprocess_HOOK()
@@ -341,7 +349,7 @@ function identica_reply_form($form, &$form_state, $id) {
     'identica_textfield' => array(
       '#type' => 'textarea',
       '#rows' => 3,
-      '#required' => true,
+      '#required' => TRUE,
     ),
     'identica_submit' => array(
       '#type' => 'submit',
