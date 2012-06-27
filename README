@@ -2,7 +2,7 @@ This project was developed as a part of GOOGLE SUMMER OF CODE '12
 @author: Rabi Shanker Guha(rabisg)
 Mentor: Peter Borsa(asrob)
 
-This module inetgrates Twitter and Identi.ca into Insight.
+This module integrates Twitter and Identi.ca into Insight.
 The use cases for the same have been outlined here
 https://fedoraproject.org/wiki/Insight_use_cases_for_status_and_microblogging
 Sections:
@@ -26,16 +26,16 @@ need.
 to provide reply/favorite/retweet links and conforms to Twittter's Display guidelines
 (https://dev.twitter.com/terms/display-guidelines).
 
-3. Since identica doesnt have a built-in Intent system like Twitter this module currently
+3. Since identica doesn't have a built-in Intent system like Twitter this module currently
 relies on identica module for direct integration with Identi.ca services
 If identica module is enabled and the user has an assocaited Identi.ca account then additional
 links for repeating,favouriting and replying are displayed that makes ajax requests to the
-desired services
+desired services.
 
 
 Known Issue
 
 The identi.ca logo displayed below the notices are external web url's. For more information
 see the .module file (function insight_identica_feed_create_identica_page())
-We have to find a elegant way of doing this or atleast host the image as a part of our service
-to remove external dependecy.
+We have to find an elegant way of doing this or at least host the image as a part of our service
+to remove external dependency.
