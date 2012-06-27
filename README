@@ -1,0 +1,41 @@
+This project was developed as a part of GOOGLE SUMMER OF CODE '12
+@author: Rabi Shanker Guha(rabisg)
+Mentor: Peter Borsa(asrob)
+
+This module inetgrates Twitter and Identi.ca into Insight.
+The use cases for the same have been outlined here
+https://fedoraproject.org/wiki/Insight_use_cases_for_status_and_microblogging
+Sections:
+   I'm interested in @Fedora status messages
+   I work on Fedora social networking, and I want to reply to a user.
+
+
+
+How-to Use this module
+
+1. On Insight website this module should work out of the box because '@fedora'
+is the default search keyword. However one can always change the search term at
+the Configuration page(admin/config/services/insight_status_feeds) to suit their
+need.
+
+2. This module creates menu entries
+  feed/ : For twitter Updates
+  feed/identica : For Identi.ca Updates
+
+3. For Twitter feeds this module uses Web-Intents (https://dev.twitter.com/docs/intents)
+to provide reply/favorite/retweet links and conforms to Twittter's Display guidelines
+(https://dev.twitter.com/terms/display-guidelines).
+
+3. Since identica doesnt have a built-in Intent system like Twitter this module currently
+relies on identica module for direct integration with Identi.ca services
+If identica module is enabled and the user has an assocaited Identi.ca account then additional
+links for repeating,favouriting and replying are displayed that makes ajax requests to the
+desired services
+
+
+Known Issue
+
+The identi.ca logo displayed below the notices are external web url's. For more information
+see the .module file (function insight_identica_feed_create_identica_page())
+We have to find a elegant way of doing this or atleast host the image as a part of our service
+to remove external dependecy.
