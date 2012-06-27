@@ -23,8 +23,8 @@ function insight_status_feeds_theme($existing, $type, $theme, $path) {
  */
 function insight_status_feeds_menu() {
   $items['admin/config/services/insight_status_feeds'] = array(
-    'title' => 'Insight Twitter Feed',
-    'description' => 'Configure settings for Insight\'s Twitter Feed.',
+    'title' => 'Insight Status Feeds',
+    'description' => 'Configure settings for Insight\'s Twitter and Identi.ca Feed.',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('insight_status_feeds_admin_form'),
     'access arguments' => array('administer site configuration'),
